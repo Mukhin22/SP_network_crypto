@@ -25,6 +25,7 @@ struct sp_net_s {
   uint16_t cur_block_id;
   uint16_t block_to_p;
   char sub_blocks[SUB_BLOCKS_SIZE];
+  char cyphered_input[MAX_INPUT_SIZE];
   /*Substitutions tables order*/
   uint8_t subs_1[BLOCK_SIZE];
   uint8_t subs_2[BLOCK_SIZE];
@@ -114,7 +115,7 @@ out:
   return err;
 }
 
-int subst(uint8_t *block, uint8_t *subs_table) {
+int subst(char *block, uint8_t *subs_table) {
   int err = 0;
 
   if (!block || !subs_table) {
@@ -129,7 +130,7 @@ int subst(uint8_t *block, uint8_t *subs_table) {
     goto out;
   }
 
-  *block = L_subs_table[*block];
+  *block = L_subs_table[(int)*block];
 out:
   return err;
 }
@@ -190,6 +191,7 @@ static inline void get_current_block(void) {
   uint8_t first_block_part = sp_net.user_input[byte_id];
   uint8_t second_block_part = sp_net.user_input[++byte_id];
   sp_net.cur_block |= (first_block_part << 8) | second_block_part;
+  sp_net.cur_block_id++;
 }
 
 static void get_sub_blocks(void) {
@@ -209,14 +211,17 @@ static void get_sub_blocks(void) {
 }
 
 static void renew_block_after_s(void) {
-  uint16_t byte = 0;
-  byte = sp_net.sub_blocks[3];
-  byte |= (sp_net.sub_blocks[2] << 4);
-  byte |= (sp_net.sub_blocks[1] << 8);
-  byte |= (sp_net.sub_blocks[1] << 12);
-  sp_net.cur_block = byte;
+  sp_net.cur_block = 0;
+  sp_net.cur_block = sp_net.sub_blocks[3];
+  sp_net.cur_block |= (sp_net.sub_blocks[2] << 4);
+  sp_net.cur_block |= (sp_net.sub_blocks[1] << 8);
+  sp_net.cur_block |= (sp_net.sub_blocks[0] << 12);
 }
-
+static void save_cyphered_block(void) {
+  uint8_t byte_id = (sp_net.cur_block_id - 1) * BYTES_IN_BLOCK;
+  sp_net.cyphered_input[byte_id] = sp_net.cur_block >> 8;
+  sp_net.cyphered_input[byte_id + 1] = sp_net.cur_block;
+}
 int sp_cypher(void) {
   int err = 0;
   for (int i = 0; i < sp_net.blocks_len; i++) {
@@ -227,7 +232,35 @@ int sp_cypher(void) {
     subst(&sp_net.sub_blocks[1], sp_net.subs_2);
     subst(&sp_net.sub_blocks[2], sp_net.subs_3);
     subst(&sp_net.sub_blocks[3], sp_net.subs_4);
+
     renew_block_after_s();
+
+    permutation(&sp_net.cur_block, sp_net.perm_1);
+
+    get_current_block();
+    get_sub_blocks();
+
+    subst(&sp_net.sub_blocks[0], sp_net.subs_5);
+    subst(&sp_net.sub_blocks[1], sp_net.subs_6);
+    subst(&sp_net.sub_blocks[2], sp_net.subs_7);
+    subst(&sp_net.sub_blocks[3], sp_net.subs_8);
+
+    renew_block_after_s();
+
+    permutation(&sp_net.cur_block, sp_net.perm_2);
+
+    get_current_block();
+    get_sub_blocks();
+
+    subst(&sp_net.sub_blocks[0], sp_net.subs_9);
+    subst(&sp_net.sub_blocks[1], sp_net.subs_10);
+    subst(&sp_net.sub_blocks[2], sp_net.subs_11);
+    subst(&sp_net.sub_blocks[3], sp_net.subs_12);
+
+    renew_block_after_s();
+
+    permutation(&sp_net.cur_block, sp_net.perm_3);
+    save_cyphered_block();
   }
 out:
   return err;
