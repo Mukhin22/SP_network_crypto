@@ -18,14 +18,19 @@
 #define BYTES_IN_BLOCK 2
 #define SUB_BLOCKS_SIZE 4
 
+//#define TEST
+
 struct sp_net_s {
   char user_input[MAX_INPUT_SIZE];
+  char sub_blocks[SUB_BLOCKS_SIZE];
+  char cyphered_input[MAX_INPUT_SIZE];
+  char uncyphered_input[MAX_INPUT_SIZE];
+
   size_t blocks_len;
   uint16_t cur_block;
   uint16_t cur_block_id;
   uint16_t block_to_p;
-  char sub_blocks[SUB_BLOCKS_SIZE];
-  char cyphered_input[MAX_INPUT_SIZE];
+
   /*Substitutions tables order*/
   uint8_t subs_1[BLOCK_SIZE];
   uint8_t subs_2[BLOCK_SIZE];
@@ -99,13 +104,19 @@ static inline void check_err(int err) {
     exit(EXIT_FAILURE);
   }
 }
+static void show_message_hex(char *mes, size_t len) {
+  for (size_t var = 0; var < len; ++var) {
+    printf("%x", (uint8_t)mes[var]);
+  }
+  printf("\n");
+}
 
 int get_input(void) {
   int err = 0;
 
   printf("Please enter the information you want to cipher\n");
   if (NULL == fgets(sp_net.user_input, MAX_INPUT_SIZE, stdin)) {
-    printf("Failed to read the input\n");
+    printf("Failed to read the input. Maximum input size 80 symbols\n");
     err = -1;
     goto out;
   }
@@ -130,21 +141,76 @@ int subst(char *block, uint8_t *subs_table) {
     goto out;
   }
 
-  *block = L_subs_table[(int)*block];
+  *block = subs_table[(int)*block];
 out:
   return err;
 }
 
-static inline uint8_t bit_test(uint8_t bit, uint16_t byte) {
+static uint8_t get_elem_index(uint8_t *array, uint8_t value) {
+  for (uint8_t i = 0; i < BLOCK_SIZE; i++) {
+    if (value == array[i]) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+int unsubst(char *block, uint8_t *subs_table) {
+  int err = 0;
+  if (!block || !subs_table) {
+    printf("Error with passed pointers\n");
+    err = -1;
+    goto out;
+  }
+
+  if ((*block > (BLOCK_SIZE - 1)) || (*block < 0)) {
+    printf("Wrong block size used\n");
+    err = -2;
+    goto out;
+  }
+  *block = get_elem_index(subs_table, (uint8_t)*block);
+out:
+  return err;
+}
+
+static inline uint8_t bit_test(uint16_t bit, uint16_t byte) {
   bit = 1 << bit;
-  return (bit & byte);
+  return (bit & byte) ? 1 : 0;
 }
 
 int permutation(uint16_t *block, uint8_t *perm_table) {
   int err = 0;
   uint16_t start_block = *block;
-  uint16_t out;
+  uint16_t out = 0;
   int8_t curr_bit_val = 0;
+  uint8_t bit_index = 0;
+  if (!block || !perm_table) {
+    printf("Error with passed pointers\n");
+    err = -1;
+    goto out;
+  }
+
+  for (int16_t i = 0; i < BLOCK_SIZE; ++i) {
+    curr_bit_val = bit_test(i, start_block);
+    bit_index = perm_table[i] - 1;
+    if (curr_bit_val != 0) {
+      out |= (1 << bit_index);
+    } else {
+      out &= ~(1 << bit_index);
+    }
+  }
+  *block = out;
+
+out:
+  return err;
+}
+
+int unpermutation(uint16_t *block, uint8_t *perm_table) {
+  int err = 0;
+  uint16_t start_block = *block;
+  uint16_t out = 0;
+  int8_t curr_bit_val = 0;
+  int8_t index_to_write = 0;
 
   if (!block || !perm_table) {
     printf("Error with passed pointers\n");
@@ -152,12 +218,13 @@ int permutation(uint16_t *block, uint8_t *perm_table) {
     goto out;
   }
 
-  for (int8_t i = 0; i < BLOCK_SIZE; ++i) {
+  for (int16_t i = 0; i < BLOCK_SIZE; ++i) {
     curr_bit_val = bit_test(i, start_block);
+    index_to_write = get_elem_index(perm_table, i + 1);
     if (curr_bit_val) {
-      out |= 1 << (perm_table[i] - 1);
+      out |= (1 << index_to_write);
     } else {
-      out &= ~(1 << (perm_table[i] - 1));
+      out &= ~(1 << (index_to_write));
     }
   }
   *block = out;
@@ -181,7 +248,10 @@ int get_blocks_len(void) {
     sp_net.user_input[sp_net.blocks_len] = ' ';
     sp_net.blocks_len++;
   }
+  sp_net.blocks_len /= 2;
   sp_net.cur_block_id = 0;
+  printf("Message entered in hex is :");
+  show_message_hex(sp_net.user_input, sp_net.blocks_len);
 out:
   return err;
 }
@@ -190,7 +260,7 @@ static inline void get_current_block(void) {
   uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
   uint8_t first_block_part = sp_net.user_input[byte_id];
   uint8_t second_block_part = sp_net.user_input[++byte_id];
-  sp_net.cur_block |= (first_block_part << 8) | second_block_part;
+  sp_net.cur_block = (first_block_part << 8) | second_block_part;
   sp_net.cur_block_id++;
 }
 
@@ -217,13 +287,22 @@ static void renew_block_after_s(void) {
   sp_net.cur_block |= (sp_net.sub_blocks[1] << 8);
   sp_net.cur_block |= (sp_net.sub_blocks[0] << 12);
 }
+
 static void save_cyphered_block(void) {
   uint8_t byte_id = (sp_net.cur_block_id - 1) * BYTES_IN_BLOCK;
   sp_net.cyphered_input[byte_id] = sp_net.cur_block >> 8;
   sp_net.cyphered_input[byte_id + 1] = sp_net.cur_block;
 }
-int sp_cypher(void) {
+
+static void save_uncyphered_block(void) {
+  uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
+  sp_net.uncyphered_input[byte_id] = sp_net.cur_block >> 8;
+  sp_net.uncyphered_input[byte_id + 1] = sp_net.cur_block;
+}
+
+int sp_cipher(void) {
   int err = 0;
+
   for (int i = 0; i < sp_net.blocks_len; i++) {
     get_current_block();
     get_sub_blocks();
@@ -237,7 +316,6 @@ int sp_cypher(void) {
 
     permutation(&sp_net.cur_block, sp_net.perm_1);
 
-    get_current_block();
     get_sub_blocks();
 
     subst(&sp_net.sub_blocks[0], sp_net.subs_5);
@@ -249,7 +327,6 @@ int sp_cypher(void) {
 
     permutation(&sp_net.cur_block, sp_net.perm_2);
 
-    get_current_block();
     get_sub_blocks();
 
     subst(&sp_net.sub_blocks[0], sp_net.subs_9);
@@ -258,11 +335,61 @@ int sp_cypher(void) {
     subst(&sp_net.sub_blocks[3], sp_net.subs_12);
 
     renew_block_after_s();
-
     permutation(&sp_net.cur_block, sp_net.perm_3);
+
     save_cyphered_block();
   }
-out:
+  printf("Cyphered messsage in hex: ");
+  show_message_hex(sp_net.cyphered_input, sp_net.blocks_len);
+
+  return err;
+}
+
+static void get_current_block_uncipher(void) {
+  sp_net.cur_block_id--;
+  uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
+  uint8_t first_block_part = sp_net.cyphered_input[byte_id];
+  uint8_t second_block_part = sp_net.cyphered_input[++byte_id];
+  sp_net.cur_block = (first_block_part << 8) | second_block_part;
+}
+
+int sp_uncipher(void) {
+  int err = 0;
+  for (int i = 0; i < sp_net.blocks_len; i++) {
+    get_current_block_uncipher();
+    unpermutation(&sp_net.cur_block, sp_net.perm_3);
+    get_sub_blocks();
+
+    unsubst(&sp_net.sub_blocks[0], sp_net.subs_12);
+    unsubst(&sp_net.sub_blocks[1], sp_net.subs_11);
+    unsubst(&sp_net.sub_blocks[2], sp_net.subs_10);
+    unsubst(&sp_net.sub_blocks[3], sp_net.subs_9);
+    renew_block_after_s();
+
+    unpermutation(&sp_net.cur_block, sp_net.perm_2);
+    get_sub_blocks();
+
+    unsubst(&sp_net.sub_blocks[0], sp_net.subs_8);
+    unsubst(&sp_net.sub_blocks[1], sp_net.subs_7);
+    unsubst(&sp_net.sub_blocks[2], sp_net.subs_6);
+    unsubst(&sp_net.sub_blocks[3], sp_net.subs_5);
+    renew_block_after_s();
+
+    unpermutation(&sp_net.cur_block, sp_net.perm_1);
+    get_sub_blocks();
+
+    unsubst(&sp_net.sub_blocks[0], sp_net.subs_4);
+    unsubst(&sp_net.sub_blocks[1], sp_net.subs_3);
+    unsubst(&sp_net.sub_blocks[2], sp_net.subs_2);
+    unsubst(&sp_net.sub_blocks[3], sp_net.subs_1);
+    renew_block_after_s();
+    save_uncyphered_block();
+  }
+
+  printf("Unciphered messsage :%s\n", sp_net.uncyphered_input);
+  printf("Unciphered messsage in hex: ");
+  show_message_hex(sp_net.uncyphered_input, sp_net.blocks_len);
+
   return err;
 }
 
@@ -286,7 +413,7 @@ void init_SP_tables(void) {
 }
 
 int main(void) {
-
+#ifndef TEST
   int ret_val = 0;
   init_SP_tables();
   ret_val = get_input();
@@ -294,19 +421,25 @@ int main(void) {
 
   ret_val = get_blocks_len();
   check_err(ret_val);
-  sp_cypher();
+  sp_cipher();
+  sp_uncipher();
   //  get_current_block();
   //  get_sub_blocks();
 
-#ifdef TEST
-  uint8_t block_to_change = 0;
-  subst(&block_to_change, L_subs_table);
-  printf("%d\n", block_to_change);
+#else
+  char block_to_change = 0x0f;
+  printf("Before subst: %x\n", block_to_change);
+  subst(&block_to_change, J_subs_table);
+  printf("after subst: %x\n", block_to_change);
+  unsubst(&block_to_change, J_subs_table);
+  printf("After subst: %x\n", block_to_change);
 
   uint16_t block_to_perm = 0xcccc;
   printf("Before perm: %x\n", block_to_perm);
   permutation(&block_to_perm, V_perm_table);
   printf("After perm: %x\n", block_to_perm);
+  unpermutation(&block_to_perm, V_perm_table);
+  printf("After unperm: %x\n", block_to_perm);
 #endif
   return EXIT_SUCCESS;
 }
