@@ -18,20 +18,23 @@
 #define BYTES_IN_BLOCK 2
 #define SUB_BLOCKS_SIZE 4
 
-//#define TEST
-
+/* Структура данных, в которой хранятся переменные которые используются при
+ * шифровании СП сетью*/
 struct sp_net_s {
-  char user_input[MAX_INPUT_SIZE];
-  char sub_blocks[SUB_BLOCKS_SIZE];
-  char cyphered_input[MAX_INPUT_SIZE];
-  char uncyphered_input[MAX_INPUT_SIZE];
+  char user_input[MAX_INPUT_SIZE];  /*User input text string*/
+  char sub_blocks[SUB_BLOCKS_SIZE]; /*Block's used in substitution operation*/
+  char cyphered_input[MAX_INPUT_SIZE];   /*Array to store the ciphered blocks of
+                                            user input*/
+  char uncyphered_input[MAX_INPUT_SIZE]; /*Array to store the unciphered blocks
+                                          of user input*/
 
-  size_t blocks_len;
-  uint16_t cur_block;
-  uint16_t cur_block_id;
-  uint16_t block_to_p;
+  size_t blocks_len;  /*Длина блоков для шифрования*/
+  uint16_t cur_block; /*Текущий блок для шифрования данных СП сетью*/
+  uint16_t cur_block_id; /*Номер блока который шифруется в данный момент*/
+  uint16_t block_to_p; /*Блок который передается в операцию подстановки*/
 
-  /*Substitutions tables order*/
+  /*Substitutions tables order. Таблицы подстановки, которые используются в
+   * блоке шифрования в  порядке их расположения. От 1 до 12.*/
   uint8_t subs_1[BLOCK_SIZE];
   uint8_t subs_2[BLOCK_SIZE];
   uint8_t subs_3[BLOCK_SIZE];
@@ -44,7 +47,7 @@ struct sp_net_s {
   uint8_t subs_10[BLOCK_SIZE];
   uint8_t subs_11[BLOCK_SIZE];
   uint8_t subs_12[BLOCK_SIZE];
-  /*Permutations used to cypher*/
+  /*Permutations used to cypher. Аналогичный блок таблиц подстановки*/
   uint8_t perm_1[BLOCK_SIZE];
   uint8_t perm_2[BLOCK_SIZE];
   uint8_t perm_3[BLOCK_SIZE];
@@ -53,6 +56,8 @@ struct sp_net_s {
 #define FIRST_4_BITS 0xFFF0
 #define BITMASK_CLEAR(x, mask) ((x) &= (~(mask)))
 
+/* Массивы в которых хранятся таблицы замены. Индекс элемента заменяется на
+ * значение элемента в массиве.*/
 uint8_t L_subs_table[BLOCK_SIZE] = {8,  14, 9,  3, 15, 4, 0,  13,
                                     11, 6,  12, 5, 7,  1, 10, 2};
 
@@ -89,6 +94,7 @@ uint8_t C_subs_table[BLOCK_SIZE] = {14, 7, 5, 10, 11, 8, 0, 3,
 uint8_t J_subs_table[BLOCK_SIZE] = {12, 8, 6,  15, 14, 0, 3, 13,
                                     7,  2, 11, 1,  10, 5, 9, 4};
 
+/* Массивы в которых хранятся таблицы подстановки.*/
 uint8_t V_perm_table[BLOCK_SIZE] = {5,  3,  12, 9,  1,  8,  4,  6,
                                     11, 16, 2,  15, 14, 10, 13, 7};
 
@@ -97,13 +103,17 @@ uint8_t W_perm_table[BLOCK_SIZE] = {10, 14, 6,  8, 4,  2,  12, 7,
 
 uint8_t X_perm_table[BLOCK_SIZE] = {9,  1, 6, 3,  7, 16, 12, 13,
                                     15, 4, 8, 10, 5, 14, 2,  11};
-
+/* Вспомогательная функция для проверки на наличие ошибок в других функциях. При
+ * наличии ошибки производится выход из программы.*/
 static inline void check_err(int err) {
   if (err != 0) {
     printf("Error occurred\n");
     exit(EXIT_FAILURE);
   }
 }
+
+/* Вспомогательная функция для того, чтобы показать сообщение в шеснадцатиричном
+ * виде.*/
 static void show_message_hex(char *mes, size_t len) {
   for (size_t var = 0; var < len; ++var) {
     printf("%x", (uint8_t)mes[var]);
@@ -111,6 +121,8 @@ static void show_message_hex(char *mes, size_t len) {
   printf("\n");
 }
 
+/*Функция предназначенная для получения пользовательского ввода. Сохраняет
+ * вводимый пользователем текст в массив данных*/
 int get_input(void) {
   int err = 0;
 
@@ -126,6 +138,8 @@ out:
   return err;
 }
 
+/* Функция подстановки, параметры ( block - массив данных - 16 бит, subs_table -
+ * таблица по которой происходит подстановка*/
 int subst(char *block, uint8_t *subs_table) {
   int err = 0;
 
@@ -145,7 +159,8 @@ int subst(char *block, uint8_t *subs_table) {
 out:
   return err;
 }
-
+/* Получает на вход массив данных(array) и значение(value), которое храниться в
+ * этом массиве, возвращает индекс элемента под которым хранится это значение*/
 static uint8_t get_elem_index(uint8_t *array, uint8_t value) {
   for (uint8_t i = 0; i < BLOCK_SIZE; i++) {
     if (value == array[i]) {
@@ -155,6 +170,10 @@ static uint8_t get_elem_index(uint8_t *array, uint8_t value) {
   return 0;
 }
 
+/*Обратная операция замены. На вход получает блок данных(block) и
+ * таблицу(subs_table) по которой происходила замена. Значение при обратной
+ * операции замены соответсвует индексу элемента под которым стоит текущее
+ * значение блока*/
 int unsubst(char *block, uint8_t *subs_table) {
   int err = 0;
   if (!block || !subs_table) {
@@ -173,17 +192,23 @@ out:
   return err;
 }
 
+/*Вспомогательная операция - возращает значение бита(bit) в блоке(byte) данных.
+ * 0 либо 1*/
 static inline uint8_t bit_test(uint16_t bit, uint16_t byte) {
   bit = 1 << bit;
   return (bit & byte) ? 1 : 0;
 }
 
+/* Операция подстановки. Получает на вход блок данных и таблицу подстановки.
+ * После каждый бит становится на место, которое указано для него в таблице
+ * подстановки. В таблицах подстановки биты указаны с 1го, а не с 0го индекса*/
 int permutation(uint16_t *block, uint8_t *perm_table) {
   int err = 0;
   uint16_t start_block = *block;
   uint16_t out = 0;
   int8_t curr_bit_val = 0;
   uint8_t bit_index = 0;
+
   if (!block || !perm_table) {
     printf("Error with passed pointers\n");
     err = -1;
@@ -205,6 +230,11 @@ out:
   return err;
 }
 
+/* Обратная операция подстановки. Получает на вход блок данных и таблицу
+ * подстановки. В ходе операции берется каждый бит, и возвращается индекс в
+ * таблице подстановки, на который этот бит был переставлен. Далеее бит
+ * записывается на свое место в котором он был до подстановки. В таблицах
+ * подстановки биты указаны с 1го, а не с 0го индекса*/
 int unpermutation(uint16_t *block, uint8_t *perm_table) {
   int err = 0;
   uint16_t start_block = *block;
@@ -232,6 +262,10 @@ out:
   return err;
 }
 
+/* Операция определяет количество блоков в исходном тексте. Для будущего
+ * шифрования СП сетью. Если количество байтов не четное(нельзя сформировать
+ * полный последний блок, минимальный размер которого 2 байта). Последний байт
+ * дополняется символом пробела.*/
 int get_blocks_len(void) {
   int err = 0;
 
@@ -256,6 +290,8 @@ out:
   return err;
 }
 
+/*Операция получения текущего 16-битного блока для последующего его шифрования
+ * СП-сетью*/
 static inline void get_current_block(void) {
   uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
   uint8_t first_block_part = sp_net.user_input[byte_id];
@@ -264,6 +300,8 @@ static inline void get_current_block(void) {
   sp_net.cur_block_id++;
 }
 
+/*Операция разбиения текущего 16-битного блока на 4х битные блоки для
+ * последующего проведения операции замены над каждым из 4х-битных блоков.*/
 static void get_sub_blocks(void) {
   uint8_t byte = sp_net.cur_block;
   BITMASK_CLEAR(byte, FIRST_4_BITS);
@@ -280,6 +318,8 @@ static void get_sub_blocks(void) {
   sp_net.sub_blocks[3] = byte >> 4;
 }
 
+/*Операция восстановление блока в 16-битный формат. Для проведения операции
+ * подстановки после замены.*/
 static void renew_block_after_s(void) {
   sp_net.cur_block = 0;
   sp_net.cur_block = sp_net.sub_blocks[3];
@@ -288,63 +328,88 @@ static void renew_block_after_s(void) {
   sp_net.cur_block |= (sp_net.sub_blocks[0] << 12);
 }
 
+/*Сохранение результата шифрования одного блока после прохождения полного цикла
+ * шифрования СП сетью*/
 static void save_cyphered_block(void) {
   uint8_t byte_id = (sp_net.cur_block_id - 1) * BYTES_IN_BLOCK;
   sp_net.cyphered_input[byte_id] = sp_net.cur_block >> 8;
   sp_net.cyphered_input[byte_id + 1] = sp_net.cur_block;
 }
 
+/*Сохранение результата дешифрования одного блока после прохождения полного
+ * цикла дешифрования СП сетью*/
 static void save_uncyphered_block(void) {
   uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
   sp_net.uncyphered_input[byte_id] = sp_net.cur_block >> 8;
   sp_net.uncyphered_input[byte_id + 1] = sp_net.cur_block;
 }
 
+/* Функция для проведения полного цикла шифрования исходного текста.*/
 int sp_cipher(void) {
   int err = 0;
-
+  // Цикл шифрования. Шифрование происходит циклически, в зависимости от
+  // количества блоков.
   for (int i = 0; i < sp_net.blocks_len; i++) {
-    get_current_block();
-    get_sub_blocks();
+    // Начало цикла
+    get_current_block(); // Получаем текущий блок для шифрования
+    get_sub_blocks(); // Разделяем 16-битный блок на 4-бит подблоки для операции
+                      // замены
 
+    // Блок операций замены (4 шт)
     subst(&sp_net.sub_blocks[0], sp_net.subs_1);
     subst(&sp_net.sub_blocks[1], sp_net.subs_2);
     subst(&sp_net.sub_blocks[2], sp_net.subs_3);
     subst(&sp_net.sub_blocks[3], sp_net.subs_4);
 
+    // Возобновляем в 16-бит блок после замены
     renew_block_after_s();
 
+    //Проводим операцию подстановки
     permutation(&sp_net.cur_block, sp_net.perm_1);
 
+    // Разделяем 16-битный блок на 4-бит подблоки для операции замены
     get_sub_blocks();
 
+    // Блок операций замены (4 шт)
     subst(&sp_net.sub_blocks[0], sp_net.subs_5);
     subst(&sp_net.sub_blocks[1], sp_net.subs_6);
     subst(&sp_net.sub_blocks[2], sp_net.subs_7);
     subst(&sp_net.sub_blocks[3], sp_net.subs_8);
 
+    // Возобновляем в 16-бит блок после замены
     renew_block_after_s();
 
+    //Проводим операцию подстановки
     permutation(&sp_net.cur_block, sp_net.perm_2);
 
+    // Разделяем 16-битный блок на 4-бит подблоки для операции замены
     get_sub_blocks();
 
+    // Блок операций замены (4 шт)
     subst(&sp_net.sub_blocks[0], sp_net.subs_9);
     subst(&sp_net.sub_blocks[1], sp_net.subs_10);
     subst(&sp_net.sub_blocks[2], sp_net.subs_11);
     subst(&sp_net.sub_blocks[3], sp_net.subs_12);
 
+    // Возобновляем в 16-бит блок после замены
     renew_block_after_s();
+
+    // Проводим операцию подстановки
     permutation(&sp_net.cur_block, sp_net.perm_3);
 
+    // Сохраняем зашифрованный блок
     save_cyphered_block();
+    // Конец прохождения цикла
   }
+
+  // Вывод полученного сообщения в итоге шифрования в 16-тиричном виде
   printf("Cyphered messsage in hex: ");
   show_message_hex(sp_net.cyphered_input, sp_net.blocks_len);
 
   return err;
 }
 
+/*Операция для получения текущего блока для дешифрования*/
 static void get_current_block_uncipher(void) {
   sp_net.cur_block_id--;
   uint8_t byte_id = sp_net.cur_block_id * BYTES_IN_BLOCK;
@@ -353,46 +418,68 @@ static void get_current_block_uncipher(void) {
   sp_net.cur_block = (first_block_part << 8) | second_block_part;
 }
 
+/* Функция для проведения полного цикла дешифрования закрытого текста. Обратные
+ * операции выполняются в обратном порядке относительно шифрования*/
 int sp_uncipher(void) {
   int err = 0;
-  for (int i = 0; i < sp_net.blocks_len; i++) {
-    get_current_block_uncipher();
-    unpermutation(&sp_net.cur_block, sp_net.perm_3);
-    get_sub_blocks();
 
+  // Цикл дешифрования. ДеШифрование происходит циклически, в зависимости от
+  // количества блоков. Операции в цикле выполняются в обратном порядке
+  // относительно шифрования.
+  for (int i = 0; i < sp_net.blocks_len; i++) {
+    //Начало цикла дешифрования для каждого блока
+
+    // Получение текущего блока для дешифрования
+    get_current_block_uncipher();
+    //Обратная операция перестановки
+    unpermutation(&sp_net.cur_block, sp_net.perm_3);
+    // Разделяем 16-битный блок на 4-бит подблоки для операции замены
+    get_sub_blocks();
+    // Блок обратных операций замены
     unsubst(&sp_net.sub_blocks[0], sp_net.subs_12);
     unsubst(&sp_net.sub_blocks[1], sp_net.subs_11);
     unsubst(&sp_net.sub_blocks[2], sp_net.subs_10);
     unsubst(&sp_net.sub_blocks[3], sp_net.subs_9);
+    // Восстановление в 16-бит блок после проведения обратных операций замены
     renew_block_after_s();
-
+    //Обратная операция перестановки
     unpermutation(&sp_net.cur_block, sp_net.perm_2);
+    // Разделяем 16-битный блок на 4-бит подблоки для операции замены
     get_sub_blocks();
-
+    // Блок обратных операций замены
     unsubst(&sp_net.sub_blocks[0], sp_net.subs_8);
     unsubst(&sp_net.sub_blocks[1], sp_net.subs_7);
     unsubst(&sp_net.sub_blocks[2], sp_net.subs_6);
     unsubst(&sp_net.sub_blocks[3], sp_net.subs_5);
+    // Восстановление в 16-бит блок после проведения обратных операций замены
     renew_block_after_s();
-
+    //Обратная операция перестановки
     unpermutation(&sp_net.cur_block, sp_net.perm_1);
+    // Разделяем 16-битный блок на 4-бит подблоки для операции замены
     get_sub_blocks();
-
+    // Блок обратных операций замены
     unsubst(&sp_net.sub_blocks[0], sp_net.subs_4);
     unsubst(&sp_net.sub_blocks[1], sp_net.subs_3);
     unsubst(&sp_net.sub_blocks[2], sp_net.subs_2);
     unsubst(&sp_net.sub_blocks[3], sp_net.subs_1);
+    // Восстановление в 16-бит блок после проведения обратных операций замены
     renew_block_after_s();
+    // Сохранение дешифрованного блока данных
     save_uncyphered_block();
+    // Конец цикла дешифрования одного блока
   }
-
+  // Вывод полученного сообщения в результате дешифрования в символьном виде
   printf("Unciphered messsage :%s\n", sp_net.uncyphered_input);
+  // Вывод полученного сообщения в результате дешифрования в шестнадцатиричном
+  // виде
   printf("Unciphered messsage in hex: ");
   show_message_hex(sp_net.uncyphered_input, sp_net.blocks_len);
 
   return err;
 }
 
+/*Функция которая используется для задания используемых в ходе шифрования таблиц
+ * замены и подстановки*/
 void init_SP_tables(void) {
   memcpy(sp_net.perm_1, V_perm_table, BLOCK_SIZE);
   memcpy(sp_net.perm_2, W_perm_table, BLOCK_SIZE);
@@ -412,34 +499,20 @@ void init_SP_tables(void) {
   memcpy(sp_net.subs_12, J_subs_table, BLOCK_SIZE);
 }
 
+// Основная функция. Точка входа программы. С нее начинается исполнение всего
+// кода.
 int main(void) {
-#ifndef TEST
-  int ret_val = 0;
-  init_SP_tables();
-  ret_val = get_input();
-  check_err(ret_val);
+  int ret_val = 0; // Переменная для проверки возвращаемых значений функций.
+  init_SP_tables(); // Регистрируем таблицы замены и подстановки.
+  ret_val = get_input(); // Получаем вводимые пользователем данные.
+  check_err(ret_val); // Проверяем корректность исполнения предыдущей функции
 
-  ret_val = get_blocks_len();
-  check_err(ret_val);
-  sp_cipher();
-  sp_uncipher();
-  //  get_current_block();
-  //  get_sub_blocks();
+  ret_val =
+      get_blocks_len(); // Получаем количество блоков для шифрования исходя из
+                        // количества введенных пользователем символов
+  check_err(ret_val); // Проверяем корректность исполнения предыдущей функции
+  sp_cipher(); // Проводим полный цикл шифрования
+  sp_uncipher(); // Проводим полный цикл дешифрования
 
-#else
-  char block_to_change = 0x0f;
-  printf("Before subst: %x\n", block_to_change);
-  subst(&block_to_change, J_subs_table);
-  printf("after subst: %x\n", block_to_change);
-  unsubst(&block_to_change, J_subs_table);
-  printf("After subst: %x\n", block_to_change);
-
-  uint16_t block_to_perm = 0xcccc;
-  printf("Before perm: %x\n", block_to_perm);
-  permutation(&block_to_perm, V_perm_table);
-  printf("After perm: %x\n", block_to_perm);
-  unpermutation(&block_to_perm, V_perm_table);
-  printf("After unperm: %x\n", block_to_perm);
-#endif
-  return EXIT_SUCCESS;
+  return EXIT_SUCCESS; // Выходим из программы
 }
