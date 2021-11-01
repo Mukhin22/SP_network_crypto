@@ -1,10 +1,10 @@
 /*
  ============================================================================
  Name        : laba1_crypto.c
- Author      : Pylhun_Vlada
+ Author      :
  Version     :
  Copyright   : Your copyright notice
- Description : Hello World in C, Ansi-style
+ Description : SP network in C
  ============================================================================
  */
 
